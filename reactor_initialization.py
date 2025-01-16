@@ -84,6 +84,39 @@ b4c.add_element('C', 1.)
 materials = openmc.Materials([water, uzrh, mo, graphite, ss304, zr, void, al, b4c])
 materials.export_to_xml()
 
+""" Shortening code idea
+# Define a helper function to parse region strings
+def create_region(region_expr, plane_key, planes):
+    return eval(region_expr) & +planes[f"{plane_key}_min"] & -planes[f"{plane_key}_max"]
+
+# List of cell definitions with their regions and materials
+cell_definitions = [
+    (cladd_cell, "-cladd_or & +cladd_ir", "cladd", ss304),
+    (bot_fitting_cell, "-bot_fitting_or", "bot_fitting", ss304),
+    (bot_refl_cell, "-refl_or", "bot_refl", graphite),
+    (mo_disk_cell, "-mo_disk_or", "mo_disk", mo),
+    (pellet_cell, "-pellet_or & +pellet_ir", "pellet", uzrh),
+    (zr_rod_cell, "-zr_rod_or", "pellet", zr),
+    (top_refl_cell, "-refl_or", "top_refl", graphite),
+    (air_gap_cell, "-cladd_ir", "air_gap", void),
+    (top_fitting_cell, "-top_fitting_or", "top_fitting", ss304),
+]
+
+# Assign region and fill for each cell
+for cell, region_expr, plane_key, material in cell_definitions:
+    cell.region = create_region(region_expr, plane_key, planes)
+    cell.fill = material
+
+# Handle miscellaneous gaps between components
+misc_gaps_cell.region = (
+    (-cladd_ir & +refl_or & +planes["bot_refl_min"] & -planes["bot_refl_max"]) |  # Bottom reflector air gap
+    (-cladd_ir & +mo_disk_or & +planes["mo_disk_min"] & -planes["mo_disk_max"]) |  # Molybdenum disk air gap
+    (-pellet_ir & +zr_rod_or & +planes["pellet_min"] & -planes["pellet_max"]) |    # Air gap between Zr rod and pellets
+    (-cladd_ir & +refl_or & +planes["top_refl_min"] & -planes["top_refl_max"])     # Top reflector air gap
+)
+misc_gaps_cell.fill = void
+"""
+
 # Assemble fuel rod
 def define_fuel_rod():
     # Assert surfaces
@@ -220,8 +253,8 @@ def define_control_rod():
     Both fittings have .5" depth into cladding
     """
     # Surfaces
-    cladd_or = openmc.ZCylinder(r=in2cm(1.25 / 2 + 0.028))
-    cladd_ir = openmc.ZCylinder(r=in2cm(1.25)/2)
+    cladd_or = openmc.ZCylinder(r=in2cm(1.25 / 2))
+    cladd_ir = openmc.ZCylinder(r=in2cm(1.25)/ - 0.028)
     # Element lengths
     total_len = in2cm(17)
     cladd_len = in2cm(16)
@@ -457,7 +490,95 @@ def define_reflector_rabbit_source():
     return refl_univ, rabb_univ, source_univ
 
 def define_thermal_column():
-    pass
+    width = in2cm(24)
+    cladd_width = in2cm(0.25)
+    #24x24" and 60" thick
+    tc_outer = openmc.model.RectangularPrism(width=width+cladd_width, height=width+cladd_width, axis='y')
+    tc_inner = openmc.model.RectangularPrism(width=width, height=width, axis='y')
+
+    # planes
+    tc_min = openmc.YPlane(y0=0)
+    tc_max = openmc.YPlane(y0=in2cm(60))
+    # .5" thick aluminum on front and back
+    tc_front_fitting = openmc.YPlane(y0=in2cm(0.5))
+    tc_back_fitting = openmc.YPlane(y0=tc_max.y0 - in2cm(0.5))
+
+    # Cell names
+    tc_cladd_cell = openmc.Cell(name="Thermal Column Cladding Cell")
+    tc_core_cell = openmc.Cell(name="Thermal Column Graphite Core Cell")
+    tc_front_fitting_cell = openmc.Cell(name="Thermal Column Bottom Aluminum Fitting Cell")
+    tc_back_fitting_cell = openmc.Cell(name="Thermal Column Top Aluminum Fitting Cell")
+    # Infinite water cell below
+
+    tc_cladd_cell.region = -tc_outer & +tc_inner & +tc_min & -tc_max
+    tc_cladd_cell.fill = al
+
+    tc_core_cell.region = -tc_inner & +tc_front_fitting & -tc_back_fitting
+    tc_core_cell.fill = graphite
+
+    tc_front_fitting_cell.region = -tc_inner & +tc_min & -tc_front_fitting
+    tc_front_fitting_cell.fill = al
+
+    tc_back_fitting_cell.region = -tc_inner & +tc_back_fitting & -tc_max
+    tc_back_fitting_cell.fill = al
+
+    inf_water_region = +tc_outer | -tc_min | +tc_max
+    inf_water_cell = define_infinite_water_cell(inf_water_region, "Thermal Column Surrounding Infinite Water Cell")
+
+    tc_univ = openmc.Universe(name="Thermal Column Universe")
+    tc_univ.add_cells([tc_cladd_cell, tc_core_cell, tc_front_fitting_cell, tc_back_fitting_cell, inf_water_cell])
+    #print(tc_univ)
+    return tc_univ
+
+def define_tubes():
+    # 5.875" OD, 5.375" ID air filled aluminum tube that is centered 3.25" north of the north face of the core.
+    through_tube_od = openmc.XCylinder(r=in2cm(5.875))
+    through_tube_id = openmc.XCylinder(r=in2cm(5.375))
+    beam_end = openmc.XPlane(x0=0) # Used later for east and west tubes
+
+    cell_properties = [
+        {"name": "Through Tube Aluminum Cladding Cell", "region": -through_tube_od & +through_tube_id, "fill": al},
+        {"name": "Through Tube Air Cell", "region": -through_tube_id, "fill": void},
+        {"name": "Through Tube Infinite Surrounding Water Cell", "region": +through_tube_od, "fill": water},
+    ]
+
+    cells = [openmc.Cell(name=cell["name"], region=cell["region"], fill=cell["fill"]) for cell in cell_properties]
+    
+    through_tube_univ = openmc.Universe(name="Through Tube Universe")
+    through_tube_univ.add_cells(cells)
+    #print(through_tube_univ)
+
+    ### Define the west tube (positive x direction)
+    west_beam_endcap = openmc.XPlane(x0=in2cm(0.5))
+    west_beam_region = (+beam_end & -through_tube_od & +through_tube_id | # Tube walls
+                        +beam_end & -west_beam_endcap & -through_tube_id) # Tube endcap
+    west_cell_properties = [
+        {"name": "West Tube Aluminum Cladding Cell", "region": west_beam_region, "fill": al},
+        {"name": "West Tube Air Cell", "region": +west_beam_endcap & -through_tube_id, "fill": void},
+        {"name": "West Tube Infinite Surrounding Water Cell", "region": -beam_end | +through_tube_od, "fill": water},
+    ]
+
+    west_beam_cells = [openmc.Cell(name=cell["name"], region=cell["region"], fill=cell["fill"]) for cell in west_cell_properties]
+
+    west_beam_univ = openmc.Universe(name="West Beam Port Universe")
+    west_beam_univ.add_cells(west_beam_cells)
+
+    ### Now the same for east beam cells
+    east_beam_endcap = openmc.XPlane(x0=-in2cm(0.5))
+    east_beam_region = (-beam_end & -through_tube_od & +through_tube_id | # Tube walls
+                        -beam_end & +west_beam_endcap & -through_tube_id) # Tube endcap
+    east_cell_properties = [
+        {"name": "East Tube Aluminum Cladding Cell", "region": east_beam_region, "fill": al},
+        {"name": "East Tube Air Cell", "region": -east_beam_endcap & -through_tube_id, "fill": void},
+        {"name": "East Tube Infinite Surrounding Water Cell", "region": +beam_end | +through_tube_od, "fill": water},
+    ]
+
+    east_beam_cells = [openmc.Cell(name=cell["name"], region=cell["region"], fill=cell["fill"]) for cell in east_cell_properties]
+
+    east_beam_univ = openmc.Universe(name="East Beam Port Universe")
+    east_beam_univ.add_cells(east_beam_cells)
+
+    return through_tube_univ, west_beam_univ, east_beam_univ
 
 
 def define_infinite_water_cell(region, name):
