@@ -1,0 +1,11 @@
+{
+    "name": "UMD OpenMC Dev Container",
+    "image": "openmc/openmc:latest",
+    "settings": {
+        "python.defaultInterpreterPath": "/openmc_venv/bin/python",
+        "python.venvPath": "/openmc_venv"
+    },
+    "extensions": [
+        "ms-python.python"
+    ]
+}
