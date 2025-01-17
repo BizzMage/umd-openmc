@@ -620,7 +620,7 @@ def define_lattice(f, l, r, c, e, a, p, config):
             lattice.universes = [[w, f, f, f, f, f, f, w, w],
                                 [w, f, r, f, f, l, f, e, w],
                                 [w, f, f, f, f, f, f, e, w],
-                                [w, f, f, r, f, a, f, w, w],
+                                [w, f, f, c, f, a, f, w, w],
                                 [w, f, f, p, f, f, f, w, w]]   
         case "old":
             lattice.universes = [[w, f, f, f, f, f, f, w, w],
@@ -766,7 +766,7 @@ def plot_universe(universe, axes="xy", offset=(0.0, 0.0, 0.0)):
 if __name__ == "__main__":
     shim1_withdraw = 90.6
     shim2_withdraw = 94.1
-    regrod_withdraw = 30
+    regrod_withdraw = 0
 
     fuel_univ = define_fuel_rod()
     cr_univ = define_control_rod()
@@ -778,7 +778,7 @@ if __name__ == "__main__":
 
     tc_univ = define_thermal_column()
     tube_univ, west_beam_univ, east_beam_univ = define_tubes()
-    lattice = define_lattice(fuelbundle, shim1, shim2, regrod, refl_univ, rabb_univ, source_univ, 'old')
+    lattice = define_lattice(fuelbundle, shim1, shim2, regrod, refl_univ, rabb_univ, source_univ, 'modern')
     root_univ = assemble_root_universe(lattice, tube_univ, west_beam_univ, east_beam_univ, tc_univ)
 
     #plot_universe(root_univ, 'xy')
@@ -822,7 +822,18 @@ if __name__ == "__main__":
     openmc.plot_geometry()
 
     geometry = openmc.Geometry(root_univ)
-    geometry.export_to_xml
+    geometry.export_to_xml()
+
+    cr_plot = openmc.Plot()
+    cr_plot.basis = 'xz'
+    cr_plot.origin = [0, -6, 90]
+    cr_plot.color_by = 'material'
+    cr_plot.pixels = (4000,4000)
+    cr_plot.width=(80,80)
+    
+    plots = openmc.Plots([cr_plot])
+    plots.export_to_xml()
+    openmc.plot_geometry()
 
     settings = openmc.Settings()
     settings.particles = 50000
@@ -843,7 +854,7 @@ if __name__ == "__main__":
     geometry.export_to_xml()
     
     settings.export_to_xml()
-    openmc.run()
+    #openmc.run()
 
     """
     print(root_univ)
