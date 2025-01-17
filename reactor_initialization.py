@@ -6,6 +6,7 @@ from inch_converter import in2cm
 """Editable parameters for fuel bundle position"""
 fb_offset = in2cm(1.53/2) # 1.53" b/w fuel rods in 2x2 bundles
 ypos = in2cm(0) # Place fuel rods 2 ft above bottom of reactor
+facilities_offset = in2cm(12.95125) # Centerline of fuel element
 
 """Declare material elemental makeup and cross sections."""
 # Water (includes thermal scattering)
@@ -498,10 +499,10 @@ def define_thermal_column():
 
     # planes
     tc_min = openmc.YPlane(y0=0)
-    tc_max = openmc.YPlane(y0=in2cm(60))
+    tc_max = openmc.YPlane(y0=in2cm(60.5))
     # .5" thick aluminum on front and back
-    tc_front_fitting = openmc.YPlane(y0=in2cm(0.5))
-    tc_back_fitting = openmc.YPlane(y0=tc_max.y0 - in2cm(0.5))
+    tc_front_fitting = openmc.YPlane(y0=in2cm(0.25))
+    tc_back_fitting = openmc.YPlane(y0=tc_max.y0 - in2cm(0.25))
 
     # Cell names
     tc_cladd_cell = openmc.Cell(name="Thermal Column Cladding Cell")
@@ -580,10 +581,115 @@ def define_tubes():
 
     return through_tube_univ, west_beam_univ, east_beam_univ
 
+def define_lattice(f, l, r, c, e, a, p, config):
+    """ Order of inputs:
+        Fuel, shim1, shim2, regrod, reflector, rabbit, source
+    """
+    # Pitch for lattice (distance from center to center for each bundle)
+    xpitch = in2cm(3.189)
+    ypitch = in2cm(3.035)
+
+    # Empty cells for water gaps in lattice
+    water_pin_cell = openmc.Cell(name="Empty Water Pin Cell for Lattice", fill=water)
+    lattice_inf_cell = openmc.Cell(name="Infinite Surrounding Water Cell Outside Lattice", fill=water)
+
+    # water universe name shortened for lattice
+    w = openmc.Universe(name="Empty Water Pin Universe for Lattice", cells=water_pin_cell)
+    lattice_inf_univ = openmc.Universe(name="Infinite Surrounding Water Universe Outside Lattice", cells=lattice_inf_cell)
+
+    # Lattice properties
+    lower_left = [-4.5*xpitch, -2.5*ypitch]
+    pitch = [xpitch, ypitch]
+    outer_univ = lattice_inf_univ
+
+    lattice = openmc.RectLattice(name="Fuel Rod Lattice Structure")
+    lattice.lower_left = lower_left
+    lattice.pitch = pitch
+    lattice.outer = outer_univ
+
+    match config.lower():
+        case "modern":
+            lattice.universes = [[w, f, f, f, f, f, f, w, w],
+                                [w, f, r, f, f, l, f, e, w],
+                                [w, f, f, f, f, f, f, e, w],
+                                [w, f, f, r, f, a, f, w, w],
+                                [w, f, f, p, f, f, f, w, w]]   
+        case "old":
+            lattice.universes = [[w, f, f, f, f, f, f, w, w],
+                                [w, f, r, f, f, l, f, w, w],
+                                [w, f, f, f, f, f, f, w, w],
+                                [w, f, f, c, f, a, f, w, w],
+                                [w, w, w, p, e, f, e, w, w]]
+        case _:
+            raise ValueError("Improper reactor config. Enter modern/old")
+
+    return lattice
 
 def define_infinite_water_cell(region, name):
     cell = openmc.Cell(name=name, region=region, fill=water)
     return cell
+
+def assemble_root_universe(lattice, through_tube, west_beam, east_beam, thermal_col):
+    # Tube radius
+    tube_radius = in2cm(5.875)
+    # xpitch, ypitch from above
+    xpitch = in2cm(3.189)
+    ypitch = in2cm(3.035)
+    n_s_core_edge = ypitch*2.5
+    e_w_core_edge = xpitch*4.5
+    # Place lattice
+    lattice_cell_area = openmc.model.RectangularPrism(width=xpitch*9, height=ypitch*5, axis='z')
+
+    lattice_cell = openmc.Cell(name="Lattice Cell", region=-lattice_cell_area, fill=lattice)
+
+    # Through tube
+    # centered 3.25" north of the north face of the core
+    through_tube_area = openmc.XCylinder(y0= -n_s_core_edge -in2cm(3.25), z0=ypos+facilities_offset, r=tube_radius)
+    through_tube_cell = openmc.Cell(name="Through Tube Cell", region = -through_tube_area, fill=through_tube)
+    through_tube_cell.translation = (0, through_tube_area.y0, through_tube_area.z0)
+
+    # West Beam Port
+    # ends 4.5" from the west side of the reactor core (including the reflectors). 
+    # It is centered 7.7" north of south face of the core
+    west_beam_area = openmc.XCylinder(y0=n_s_core_edge - in2cm(7.7), z0=ypos+facilities_offset, r=tube_radius)
+    west_beam_min = openmc.XPlane(x0=e_w_core_edge + in2cm(4.5))
+    west_beam_cell = openmc.Cell(name="West Beam Port Cell", region= +west_beam_min & -west_beam_area, fill= west_beam)
+    west_beam_cell.translation = (west_beam_min.x0, west_beam_area.y0, west_beam_area.z0)
+
+    # East Beam Port
+    # ends 3.8" from the east side of the reactor core. 
+    # It is centered 7.7" north of south face of the core. 
+    east_beam_area = openmc.XCylinder(y0=west_beam_area.y0, z0=west_beam_area.z0, r=tube_radius)
+    east_beam_max = openmc.XPlane(x0= -e_w_core_edge - in2cm(3.8))
+    east_beam_cell = openmc.Cell(name="East Beam Port Cell", region = -east_beam_max & -east_beam_area, fill=east_beam)
+    east_beam_cell.translation = (east_beam_max.x0, east_beam_area.y0, east_beam_area.z0)
+
+    # Thermal Column
+    # 24x24x60 located 1" from south of core, .25" thick cladding
+    thermal_col_area = openmc.model.RectangularPrism(width=in2cm(24.5), height=in2cm(24.5), axis='y', origin=(0,ypos+facilities_offset))
+    thermal_col_min = openmc.YPlane(y0=n_s_core_edge + in2cm(1))
+    thermal_col_max = openmc.YPlane(y0=thermal_col_min.y0 + in2cm(60.5))
+    thermal_col_cell = openmc.Cell(name="Thermal Column Cell", region=-thermal_col_area & +thermal_col_min & -thermal_col_max, fill=thermal_col)
+    thermal_col_cell.translation = (0, thermal_col_min.y0, ypos+facilities_offset)
+
+    # Infinnite Surrounding Water
+    inf_reactor_cell = openmc.Cell(name="Infinite Water Reactor Pool Cell", fill=water)
+
+    # Create universe
+    inf_reactor_univ = openmc.Universe(name="infinite Reactor Pool Universe")
+    inf_reactor_univ.add_cells([lattice_cell, through_tube_cell,west_beam_cell, east_beam_cell, thermal_col_cell, inf_reactor_cell])
+
+    # Place infinite reactor into finite reactor
+    # 7ft diameter, 20'6" deep
+    pool_ir = openmc.ZCylinder(r=in2cm(7*12), boundary_type='vacuum')
+    pool_min = openmc.ZPlane(z0=0, boundary_type='vacuum')
+    pool_max = openmc.ZPlane(z0=in2cm(20*12 + 6), boundary_type='vacuum')
+
+    interior = openmc.Cell(name="Reactor Interior", region= -pool_ir & +pool_min & -pool_max,fill=inf_reactor_univ)
+
+    reactor_root_univ = openmc.Universe(name="Reactor Root Universe", cells=interior)
+    #print(reactor_root_univ)
+    return reactor_root_univ
 
 if __name__ == "__main__":
     fuel_univ = define_fuel_rod()
@@ -592,6 +698,10 @@ if __name__ == "__main__":
     tr_cr_univ = define_cr_fuel_bundle(fuel_univ,cr_univ,'top right',0,"Top Right CR Bundle")
     refl_univ, rabb_univ, source_univ = define_reflector_rabbit_source()
 
+
+
+
+    """
     geometry = openmc.Geometry(refl_univ)
     geometry.export_to_xml()
     fuel_plot = openmc.Plot()
@@ -630,6 +740,7 @@ if __name__ == "__main__":
     plots = openmc.Plots([fuel_plot])
     plots.export_to_xml()
     openmc.plot_geometry()
+    """
 
 
     """
