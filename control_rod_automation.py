@@ -763,11 +763,7 @@ def plot_universe(universe, axes="xy", offset=(0.0, 0.0, 0.0)):
     # Optionally, generate the plot
     openmc.plot_geometry()
 
-if __name__ == "__main__":
-    shim1_withdraw = 90.6
-    shim2_withdraw = 94.1
-    regrod_withdraw = 30
-
+def cr_sliding(shim1_withdraw, shim2_withdraw, regrod_withdraw):
     fuel_univ = define_fuel_rod()
     cr_univ = define_control_rod()
     fuelbundle = define_fuel_bundle(fuel_univ)
@@ -781,212 +777,23 @@ if __name__ == "__main__":
     lattice = define_lattice(fuelbundle, shim1, shim2, regrod, refl_univ, rabb_univ, source_univ, 'old')
     root_univ = assemble_root_universe(lattice, tube_univ, west_beam_univ, east_beam_univ, tc_univ)
 
-    #plot_universe(root_univ, 'xy')
-    geometry = openmc.Geometry(regrod)
-    geometry.export_to_xml()
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'xz'
-    cr_plot.origin = [0, fb_offset, 90]
-    cr_plot.color_by = 'material'
-    cr_plot.pixels = (4000,4000)
-    cr_plot.width=(80,80)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(shim1)
-    geometry.export_to_xml()
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'xz'
-    cr_plot.origin = [0, fb_offset, 90]
-    cr_plot.color_by = 'material'
-    cr_plot.pixels = (4000,4000)
-    cr_plot.width=(80,80)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(shim2)
-    geometry.export_to_xml()
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'xz'
-    cr_plot.origin = [0, fb_offset, 90]
-    cr_plot.color_by = 'material'
-    cr_plot.pixels = (4000,4000)
-    cr_plot.width=(80,80)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
     geometry = openmc.Geometry(root_univ)
     geometry.export_to_xml
 
     settings = openmc.Settings()
-    settings.particles = 50000
+    settings.particles = 10000
     settings.batches = 200
     settings.inactive = 50
     settings.run_mode = 'eigenvalue'
 
-
-    # Define source
-    bounds = [-36.45027, -19.27225, 48.26, 36.45027, 19.27225, 124.46]
-    uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:])
-    settings.source = openmc.IndependentSource(
-        space=uniform_dist,
-        constraints={'fissionable': True}
-        )
-
-    geometry = openmc.Geometry(root_univ)
-    geometry.export_to_xml()
+    xwidth = 3.8862
+    ywidth = 3.8862
+    low_left = (-3*xwidth, -2.5*ywidth, ypos+facilities_offset-5)
+    top_right = (3*xwidth, 2.5*ywidth, ypos+facilities_offset+7)
+    start_source_coords = openmc.stats.Box(lower_left=low_left, upper_right=top_right)
+    start_source = openmc.IndependentSource()
+    start_source.space = start_source_coords
+    settings.source = start_source
     
     settings.export_to_xml()
     openmc.run()
-
-    """
-    print(root_univ)
-
-    geometry = openmc.Geometry(shim1)
-    geometry.export_to_xml()
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'yz'
-    cr_plot.origin = [-fb_offset, 0, 90]
-    cr_plot.color_by = 'material'
-    cr_plot.pixels = (400,400)
-    cr_plot.width=(80,80)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(root_univ)
-    geometry.export_to_xml()
-    fb_plot = openmc.Plot()
-    fb_plot.basis = 'xy'
-    fb_plot.origin = [0, 0, 76.990575]
-    fb_plot.color_by = 'material'
-    fb_plot.width=(100,100)
-    fb_plot.pixels=(5000,5000)
-    plots = openmc.Plots([fb_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-    """
-
-  
-
-    """
-    fb_plot = openmc.Plot()
-    fb_plot.basis = 'xy'
-    fb_plot.origin = [0, 0, 30]
-    fb_plot.color_by = 'material'
-    fb_plot.width=(100,100)
-    fb_plot.pixels=(5000,5000)
-    plots = openmc.Plots([fb_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(cr_univ)
-    geometry.export_to_xml()
-
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'yz'
-    cr_plot.origin = [0, 0, 22.5]
-    cr_plot.color_by = 'material'
-    cr_plot.pixels = (400,400)
-    cr_plot.width=(10,80)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-    """
-
-    """
-    geometry = openmc.Geometry(refl_univ)
-    geometry.export_to_xml()
-    fuel_plot = openmc.Plot()
-    fuel_plot.basis = 'yz'
-    fuel_plot.origin = [0, 0, 32.5]
-    fuel_plot.color_by = 'material'
-    fuel_plot.colors = {void:'cyan'}
-    fuel_plot.width=(10,70)
-
-    plots = openmc.Plots([fuel_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(rabb_univ)
-    geometry.export_to_xml()
-    fuel_plot = openmc.Plot()
-    fuel_plot.basis = 'yz'
-    fuel_plot.origin = [0, 0, 32.5]
-    fuel_plot.color_by = 'material'
-    fuel_plot.colors = {void:'cyan'}
-    fuel_plot.width=(10,70)
-
-    plots = openmc.Plots([fuel_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-
-    geometry = openmc.Geometry(source_univ)
-    geometry.export_to_xml()
-    fuel_plot = openmc.Plot()
-    fuel_plot.basis = 'yz'
-    fuel_plot.origin = [0, 0, 32.5]
-    fuel_plot.color_by = 'material'
-    fuel_plot.colors = {void:'cyan'}
-    fuel_plot.width=(10,70)
-
-    plots = openmc.Plots([fuel_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-    """
-
-
-    """
-    fb_plot = openmc.Plot()
-    fb_plot.basis = 'xy'
-    fb_plot.origin = [0, 0, 32.5]
-    fb_plot.color_by = 'material'
-    fb_plot.colors = {b4c:'cyan'}
-    fb_plot.width=(10,10)
-    
-
-
-    CR Plots
-    geometry = openmc.Geometry(cr_univ)
-    geometry.export_to_xml()
-
-    cr_plot = openmc.Plot()
-    cr_plot.basis = 'yz'
-    cr_plot.origin = [0, 0, 22.5]
-    cr_plot.color_by = 'material'
-    cr_plot.width=(10,50)
-    
-    plots = openmc.Plots([cr_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-    """
-    # Break
-    """ Fuel Universe Plots
-    geometry = openmc.Geometry(fuel_univ)
-    geometry.export_to_xml()
-    fuel_plot = openmc.Plot()
-    fuel_plot.basis = 'yz'
-    fuel_plot.origin = [0, 0, 32.5]
-    fuel_plot.color_by = 'material'
-    fuel_plot.colors = {void:'cyan'}
-    fuel_plot.width=(10,70)
-
-    mo_plot = openmc.Plot()
-    mo_plot.basis = 'yz'
-    mo_plot.origin = [0, 0, 14]
-    mo_plot.color_by = 'material'
-    mo_plot.colors = {void:'cyan'}
-    mo_plot.width=(4,10)
-
-    plots = openmc.Plots([fuel_plot, mo_plot])
-    plots.export_to_xml()
-    openmc.plot_geometry()
-    """
