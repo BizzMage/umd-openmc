@@ -617,11 +617,19 @@ def define_lattice(f, l, r, c, e, a, p, config):
 
     match config.lower():
         case "modern":
+            
             lattice.universes = [[w, f, f, f, f, f, f, w, w],
                                 [w, f, r, f, f, l, f, e, w],
                                 [w, f, f, f, f, f, f, e, w],
                                 [w, f, f, c, f, a, f, w, w],
-                                [w, f, f, p, f, f, f, w, w]]   
+                                [w, f, f, p, f, f, f, w, w]]
+            """
+            lattice.universes = [[w, f, f, f, f, f, f, w, w],
+                                [w, f, c, f, f, l, f, e, w],
+                                [w, f, f, f, f, f, f, e, w],
+                                [w, f, f, r, f, a, f, w, w],
+                                [w, f, f, p, f, f, f, w, w]]
+            """
         case "old":
             lattice.universes = [[w, f, f, f, f, f, f, w, w],
                                 [w, f, r, f, f, l, f, w, w],
@@ -699,10 +707,6 @@ def assemble_root_universe(lattice, through_tube, west_beam, east_beam, thermal_
     #print(reactor_root_univ)
     return reactor_root_univ
 
-import openmc
-
-import openmc
-
 def plot_universe(universe, axes="xy", offset=(0.0, 0.0, 0.0)):
     """
     Plots a 2D cross-section of a given universe with auto-centered origin and offset.
@@ -764,8 +768,8 @@ def plot_universe(universe, axes="xy", offset=(0.0, 0.0, 0.0)):
     openmc.plot_geometry()
 
 if __name__ == "__main__":
-    shim1_withdraw = 90.6
-    shim2_withdraw = 94.1
+    shim1_withdraw = 0
+    shim2_withdraw = 100
     regrod_withdraw = 0
 
     fuel_univ = define_fuel_rod()
@@ -781,6 +785,24 @@ if __name__ == "__main__":
     lattice = define_lattice(fuelbundle, shim1, shim2, regrod, refl_univ, rabb_univ, source_univ, 'modern')
     root_univ = assemble_root_universe(lattice, tube_univ, west_beam_univ, east_beam_univ, tc_univ)
 
+    geometry = openmc.Geometry(root_univ)
+    geometry.export_to_xml()
+
+    # Voxel plot
+    vox_plot = openmc.Plot()
+    vox_plot.type = 'voxel'
+    vox_plot.width = (400.,400.,400.)
+    vox_plot.pixels = (200,200,200)
+    vox_plot.origin = (0, 0, facilities_offset)
+    vox_plot.color_by = 'material'
+    plots = openmc.Plots([vox_plot])
+    plots.export_to_xml()
+    openmc.plot_geometry()
+
+
+
+    """
+    # OTHER STUFF
     #plot_universe(root_univ, 'xy')
     geometry = openmc.Geometry(regrod)
     geometry.export_to_xml()
@@ -837,8 +859,8 @@ if __name__ == "__main__":
 
     settings = openmc.Settings()
     settings.particles = 50000
-    settings.batches = 200
-    settings.inactive = 50
+    settings.batches = 50
+    settings.inactive = 10
     settings.run_mode = 'eigenvalue'
 
 
@@ -854,8 +876,9 @@ if __name__ == "__main__":
     geometry.export_to_xml()
     
     settings.export_to_xml()
-    #openmc.run()
+    openmc.run()
 
+    """
     """
     print(root_univ)
 
